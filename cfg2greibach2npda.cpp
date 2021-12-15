@@ -167,7 +167,7 @@ public:
     void eliminateSingle() {
         for (auto &p: prod) {
             const char &left = p.first;
-            set<char> chainSet = _getChainSet(left);
+            vector<char> chainSet = _getChainSet(left);
             for (auto &right: chainSet) {
                 prod[left].erase(string(1, right));
                 prod[left].insert(prod[right].begin(), prod[right].end());
@@ -274,15 +274,16 @@ private:
         return ch;
     }
 
-    set<char> _getChainSet(char left) {
-        set<char> T;
+    vector<char> _getChainSet(char left) {
+        vector<char> T;
         for (const string &right: prod[left]) {
             if (right.size() == 1 && isNonTerminal(right[0])) {
-                T.insert(right[0]);
-                set<char> subT = _getChainSet(right[0]);
-                T.insert(subT.begin(), subT.end());
+                T.push_back(right[0]);
+                vector<char> subT = _getChainSet(right[0]);
+                T.insert(T.end(), subT.begin(), subT.end());
             }
         }
+        T.erase(unique(T.begin(), T.end()), T.end()); // ШЅжи
         return T;
     }
 
