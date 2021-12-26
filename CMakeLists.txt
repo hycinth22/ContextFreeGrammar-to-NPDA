@@ -3,4 +3,4 @@ project(CFG2NPDA)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(CFG2NPDA cfg2greibach2npda.cpp)
+add_executable(CFG2NPDA cfg2greibach2npda.cpp utils.cpp)
