@@ -23,15 +23,14 @@ inline bool isNonTerminal(const char x) { return x >= 'A' && x <= 'Z'; }
 
 inline bool isTerminal(const char x) { return !isNonTerminal(x); }
 
-// 在代入产生式时，需要拼接右部。concatRight方便解决可能其中一个是空的问题，防止出现εA、Aε的输出（应是A）
-string concatRight(const string &a, const string &b) {
-    if (a == "0") return b; else if (b == "0") return a;
-    return a + b;
+// 在代入产生式时，需要拼接右部。
+// concatRight方便解决可能其中一个是空的问题，防止出现εA、Aε（应是A）
+inline string concatRight(const string &a, const string &b) {
+    if (a == "0") return b; else if (b == "0") return a; else return a + b;
 }
 
-string concatRight(const string &a, char b) {
-    if (a == "0") return string(1, b); else if (b == '0') return a;
-    return a + b;
+inline string concatRight(const string &a, char b) {
+    if (a == "0") return string(1, b); else if (b == '0') return a; else return a + b;
 }
 
 class ContextFreeGrammar {
@@ -45,10 +44,10 @@ public:
             cout << "正在寻找 " << AiLeft << " 的间接左递归" << endl;
             for (auto j = prod.begin(); j != i; ++j) {
                 const char &AjLeft = j->first;
-                for (auto ii = i->second.begin(); ii != i->second.end();) {
+                for (auto ii = i->second.begin(); ii != i->second.end();) { // 查找i的所有产生式中形如i -> j r的
                     const string &AiRight = *ii;
-                    if (!AiRight.empty() && AiRight[0] == AjLeft) {
-                        for (const string &AjRight: j->second) {
+                    if (!AiRight.empty() && AiRight[0] == AjLeft) { //  形如i -> j r的
+                        for (const string &AjRight: j->second) { // 用j的所有产生式 j → δ1|δ2|…|δk 去替换 i → j r
                             string newAiRight = concatRight(AjRight, AiRight.substr(1));
                             cout << "  把 " << AjLeft << " -> " << AjRight << " 代入 " << AiLeft << " -> " << AiRight;
                             cout << "   得到 " << AiLeft << " -> " << newAiRight << endl;
@@ -60,35 +59,37 @@ public:
                     }
                 }
             }
-            // 为Ai的所有产生式消除直接左递归
-            set<string> oldright = i->second;
-            bool has = false;
-            char z = allocateNewToken();
-            for (auto it = oldright.begin(); it != oldright.end();) {
-                const string &right = *it;
-                if (right.size() > 1 && right[0] == AiLeft) {
-                    cout << "正在消除直接左递归产生式 " << AiLeft << " -> " << right << endl;
-                    has = true;
-                    string a = right.substr(1);
-                    prod[z].insert(a);
-                    prod[z].insert(a + z);
-                    i->second.erase(i->second.find(right));
-                    it = oldright.erase(it);
-                    cout << "  引入 " << z << " -> " << a << endl;
-                    cout << "  引入 " << z << " -> " << a + z << endl;
-                } else {
-                    ++it;
+            _eliminateDirectLeftRecursion(i->first, i->second, i); // 为Ai的所有产生式消除直接左递归
+        }
+    }
+
+    void _eliminateDirectLeftRecursion(char AiLeft, set<string> oldright, map<char, set<string>>::iterator &pi) {
+        bool has = false;
+        char z = allocateNewToken();
+        for (auto it = oldright.begin(); it != oldright.end();) {
+            const string &right = *it;
+            if (right.size() > 1 && right[0] == AiLeft) {
+                cout << "正在消除直接左递归产生式 " << AiLeft << " -> " << right << endl;
+                has = true;
+                string a = right.substr(1);
+                prod[z].insert(a);
+                cout << "  引入 " << z << " -> " << a << endl;
+                prod[z].insert(a + z);
+                cout << "  引入 " << z << " -> " << a + z << endl;
+                pi->second.erase(pi->second.find(right));
+                it = oldright.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (has) {
+            for (auto &right: oldright) {
+                if ((!right.empty()) && right[0] != AiLeft) {
+                    prod[AiLeft].insert(concatRight(right, z));
+                    cout << "  引入 " << AiLeft << " -> " << concatRight(right, z) << endl;
                 }
             }
-            if (has) {
-                for (auto &right: oldright) {
-                    if ((!right.empty()) && right[0] != AiLeft) {
-                        prod[AiLeft].insert(concatRight(right, z));
-                        cout << "  引入 " << AiLeft << " -> " << concatRight(right, z) << endl;
-                    }
-                }
-                cout << "已消除 " << AiLeft << " 的所有左递归 " << endl;
-            }
+            cout << "已消除 " << AiLeft << " 的左递归 " << endl;
         }
     }
 
@@ -164,7 +165,7 @@ public:
     }
 
     // 消除单一产生式
-    void eliminateSingle() {
+    void eliminateOnlySingle() {
         for (auto &p: prod) {
             const char &left = p.first;
             vector<char> chainSet = _getChainSet(left);
@@ -178,7 +179,7 @@ public:
     // 消除无用符号
     void removeUselessSymbol() {
         // 两步顺序不能调换
-        _deleteUselessSymbol1(); // 删除不能经过若干步最终推导出句子（最终全为终结符）的非终结符
+        _deleteUselessSymbol1(); // 删除不能最终推导出终结符串的非终结符
         _deleteUselessSymbol2(); // 删除从开始符号S不能推导出的非终结符
     }
 
@@ -287,8 +288,8 @@ private:
         return T;
     }
 
-    void _deleteUselessSymbol1() {
-        // 找到所有经过若干步推导最终可以推出句子（最终全为终结符）的非终结符   V ->* T*
+    void _deleteUselessSymbol1() {  // 删除不能最终推导出终结符串的非终结符
+        // 先找到所有经过若干步推导最终可以推出终结符串（最终全为终结符）的非终结符   V ->* T*
         set<char> S1;
         bool changed;
         do {
@@ -329,8 +330,8 @@ private:
         }
     }
 
-    void _deleteUselessSymbol2() {
-        // 找到从开始符号S可以推出的全部非终结符V。 即存在S ->* AVC,  A、C可以是终结符也可以是非终结符
+    void _deleteUselessSymbol2() { // 删除从开始符号S不能推导出的非终结符
+        // 先找到从开始符号S可以推出的全部非终结符V。 即存在S ->* AVC,  A、C可以是终结符也可以是非终结符
         set<char> S2;
         queue<char> q;
         q.push('S');
@@ -440,8 +441,9 @@ public:
             }
             cout << "读取到符号" << text[i] << endl;
             for (pair<NPDAState, string> &s: next) {
-                cout << "{状态" << s.first << ", " << s.second.substr(0, s.second.size()) << "}" << endl;
+                cout << "{状态" << s.first << ", " << s.second.substr(0, s.second.size()) << "} ";
             }
+            cout << endl;
             current = next;
             matched = false;
         }
@@ -457,6 +459,7 @@ public:
                 }
             }
         }
+        cout << "读完符号串但没有到达接受状态" << endl;
         return false;
     }
 
@@ -545,7 +548,7 @@ int main() {
                 return 0;
             }
             if (right.size()>1 && right.find('0')!=string::npos) {
-                cerr << "文法错误，右侧除了表示空产生式不能含有0";
+                cerr << "文法错误，右侧的0只能用于表示空产生式";
                 return 0;
             }
             if (right[0]==' ') {
@@ -563,27 +566,28 @@ int main() {
     cout << "初始文法:" << endl;
     g.output();
 
-    g.eliminateLeftRecursion();
-    cout << "消除左递归后:" << endl;
+    g.removeUselessSymbol();
+    cout << "消除无用符号后:" << endl;
     g.output();
 
     g.eliminateEpsilon();
     cout << "消除空产生式后:" << endl;
     g.output();
 
-    g.eliminateSingle();
+    g.eliminateOnlySingle();
     cout << "消除单一产生式后:" << endl;
+    g.output();
+
+    g.eliminateLeftRecursion();
+    cout << "消除左递归后:" << endl;
     g.output();
 
     g.transformFirstSymbolToTerminal();
     cout << "消除非终结符开头后:" << endl;
     g.output();
 
-    g.removeUselessSymbol();
-    cout << "消除无用符号后:" << endl;
-    g.output();
-
     g.transformIntoNonTerminalExceptFirst();
+    g.removeUselessSymbol();
     cout << "Greibach范式:" << endl;
     g.output();
 
@@ -595,9 +599,9 @@ int main() {
     cout << "输入一行句子判断是否属于此文法描述的语言（直接回车可以判断空串是否属于）：" << endl;
     while (getline(cin, text)) {
         if (npda.canAccepted(text)) {
-            cout << (text.empty()?"ε":text) << "属于该语言" << endl;
+            cout << "√ " << (text.empty() ? "ε" : text) << "属于该语言" << endl;
         } else {
-            cout << (text.empty()?"ε":text) << "不属于该语言" << endl;
+            cout << "× " << (text.empty() ? "ε" : text) << "不属于该语言" << endl;
         }
         cout << endl;
     }
